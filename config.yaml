@@ -1,31 +1,54 @@
 # lightning.pytorch==2.0.9.post0
 seed_everything: 42
 trainer:
-  accelerator: gpu
-  strategy: ddp_find_unused_parameters_true
-  devices: [0]
+  accelerator: auto
+  strategy: auto
+  devices: 1
   num_nodes: 1
   precision: 32
   logger:
-    - class_path: CSVLogger
+    - class_path: lightning.pytorch.loggers.CSVLogger
       init_args:
         save_dir: logs
         name: experiment
 
   callbacks:
-    - class_path: RichProgressBar
-      init_args:
-        leave: True
+    # original
+    # - class_path: RichProgressBar
+    #   init_args:
+    #     leave: True
 
-    - class_path: ModelCheckpoint
+    # - class_path: ModelCheckpoint
+    #   init_args:
+    #     every_n_epochs: 10
+    #     save_on_train_epoch_end: True
+    #     save_top_k: -1
+
+    # - class_path: LearningRateMonitor
+    #   init_args:
+    #     logging_interval: step
+    # Removed RichProgressBar due to jsonargparse Style parsing issues
+
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
-        every_n_epochs: 10
-        save_on_train_epoch_end: True
         save_top_k: -1
+        every_n_epochs: 10
+        mode: min
+        save_on_train_epoch_end: true
+        # dirpath/filename/monitor can be null or set here
+        dirpath: null
+        filename: null
+        monitor: null
+        save_on_exception: false
+        save_weights_only: false
+        auto_insert_metric_name: true
+        enable_version_counter: true
 
-    - class_path: LearningRateMonitor
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: step
+        log_momentum: false
+        log_weight_decay: false
 
   max_epochs: 50
   check_val_every_n_epoch: 10
@@ -33,8 +56,7 @@ trainer:
   log_every_n_steps: 1
   deterministic: True
   inference_mode: True
-  use_distributed_sampler: True
-  sync_batchnorm: True
+  use_distributed_sampler: False
 
 model:
   lr_g: 0.00016                         # Learning rate for the generator
@@ -43,7 +65,7 @@ model:
   disc_grad_penalty_weight: 0.5         # Gradient penalty weight for the discriminator
   lambda_rec_loss: 0.5                  # Reconstruction loss weight
   optim_betas: [0.5, 0.9]               # Adam optimizer betas
-  eval_mask: True                       # Whether to use mask during test
+  eval_mask: False                       # Whether to use mask during test
   eval_subject: True                    # Whether to evaluate subject-wise during test (`subject_ids` should be provided in the test dataset)
 
   diffusion_params:
@@ -56,7 +78,7 @@ model:
 
   generator_params:
     self_recursion: True                # Whether to use self-consistent recursion
-    image_size: ${data.image_size}      # Image size
+    image_size: 256                     # Image size (was ${data.image_size})
     z_emb_dim: 256                      # Dimension of the latent embedding
     ch_mult: [1, 1, 2, 2, 4, 4]         # Channel multipliers for each resolution
     num_res_blocks: 2                   # Number of residual blocks
@@ -90,13 +112,14 @@ data:
   val_batch_size: 4
   test_batch_size: 32
 
-  dataset_dir: ./dataset
+  dataset_dir: ./datasets/IXI_processed
   source_modality: T1
   target_modality: T2
   dataset_class: NumpyDataset           # Dataset class name that can be customized in datasets.py
   image_size: 256                       # Image size used in padding
   padding: True                         # Whether to pad the input
   norm: True                            # Whether to normalize the input
-  num_workers: 32
+  #orientation_correction: True          # Whether to apply orientation correction for T1/T2 consistency
+  num_workers: 4
 
 ckpt_path:

@@ -1,0 +1,19 @@
+name: selfrdb
+channels:
+  - conda-forge
+  - pytorch
+  - defaults
+dependencies:
+  - python=3.8
+  - numpy
+  - lightning=2.2.4
+  - scikit-image
+  - matplotlib
+  - pyyaml
+  - ninja
+  - rich
+  - omegaconf
+  - pip
+  - pip:
+      - jsonargparse[signatures]>=4.27.7
+      # Install torch & vision via pip after env creation (next step)

@@ -1,0 +1,62 @@
+seed_everything: 42
+
+trainer:
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        monitor: null
+        mode: min
+        every_n_train_steps: 0
+        every_n_epochs: 10
+        train_time_interval: null
+  accelerator: auto
+  devices: 1
+  strategy: auto
+  precision: 32
+  max_epochs: 1
+  log_every_n_steps: 1
+  deterministic: true
+  inference_mode: true
+  use_distributed_sampler: false
+
+  logger:
+    - class_path: lightning.pytorch.loggers.CSVLogger
+      init_args:
+        save_dir: logs
+        name: experiment
+        version: null
+
+# BridgeRunner.__init__ signature
+model:
+  generator_params:
+    # <-- fill with your real values; placeholders below
+    in_channels: 2
+    out_channels: 1
+    # ... other NCSNpp args ...
+  discriminator_params:
+    # ... your Discriminator_large args ...
+  diffusion_params:
+    n_steps: 50
+    n_recursions: 1
+    # ... other DiffusionBridge args ...
+  lr_g: 1.6e-4
+  lr_d: 1.6e-4
+  disc_grad_penalty_freq: 1
+  disc_grad_penalty_weight: 1.0
+  lambda_rec_loss: 1.0
+  optim_betas: [0.5, 0.9]
+  eval_mask: false
+  eval_subject: false
+
+# DataModule expected args (adapt to your DataModule signature)
+data:
+  dataset_dir: ${data.dataset_dir}  # will be overridden by CLI flag
+  source_modality: ${data.source_modality}
+  target_modality: ${data.target_modality}
+  dataset_class: NumpyDataset
+  image_size: 256
+  padding: True
+  norm: True
+  #orientation_correction: True
+  test_batch_size: ${data.test_batch_size}
+  num_workers: 4

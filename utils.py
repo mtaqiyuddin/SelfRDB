@@ -96,7 +96,10 @@ def norm_01(x):
 
 def mean_norm(x):
     x = np.abs(x)
-    return x/x.mean(axis=(-1,-2), keepdims=True)
+    mean_val = x.mean(axis=(-1,-2), keepdims=True)
+    # Avoid division by zero
+    mean_val = np.where(mean_val == 0, 1.0, mean_val)
+    return x/mean_val
 
 
 def apply_mask_and_norm(x, mask, norm_func):

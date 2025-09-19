@@ -14,16 +14,32 @@ from torch.nn import functional as F
 from torch.autograd import Function
 from torch.utils.cpp_extension import load
 
+# original one
+# module_path = os.path.dirname(__file__)
+# fused = load(
+#     "fused",
+#     sources=[
+#         os.path.join(module_path, "fused_bias_act.cpp"),
+#         os.path.join(module_path, "fused_bias_act_kernel.cu"),
+#     ],
+# )
 
-module_path = os.path.dirname(__file__)
-fused = load(
-    "fused",
-    sources=[
-        os.path.join(module_path, "fused_bias_act.cpp"),
-        os.path.join(module_path, "fused_bias_act_kernel.cu"),
-    ],
-)
-
+# Attempt to compile/load CUDA/C++ fused bias+act kernels if CUDA is present.
+# On Apple Silicon (MPS/CPU only) this will fail, so we just fall back.
+fused = None
+try:
+    if torch.cuda.is_available():
+        module_path = os.path.dirname(__file__)
+        fused = load(
+            name="fused_bias_act",
+            extra_cflags=["-O3"],
+            sources=[
+                os.path.join(module_path, "fused_bias_act.cpp"),
+                os.path.join(module_path, "fused_bias_act_kernel.cu"),
+            ],
+        )
+except Exception:
+    fused = None
 
 class FusedLeakyReLUFunctionBackward(Function):
     @staticmethod
@@ -78,28 +94,48 @@ class FusedLeakyReLUFunction(Function):
 
         return grad_input, grad_bias, None, None
 
+# original
+# class FusedLeakyReLU(nn.Module):
+#     def __init__(self, channel, negative_slope=0.2, scale=2 ** 0.5):
+#         super().__init__()
+
+#         self.bias = nn.Parameter(torch.zeros(channel))
+#         self.negative_slope = negative_slope
+#         self.scale = scale
+
+#     def forward(self, input):
+#         return fused_leaky_relu(input, self.bias, self.negative_slope, self.scale)
 
 class FusedLeakyReLU(nn.Module):
     def __init__(self, channel, negative_slope=0.2, scale=2 ** 0.5):
         super().__init__()
-
         self.bias = nn.Parameter(torch.zeros(channel))
         self.negative_slope = negative_slope
         self.scale = scale
 
     def forward(self, input):
-        return fused_leaky_relu(input, self.bias, self.negative_slope, self.scale)
+        # Pure PyTorch fallback (works on CPU, CUDA, and MPS)
+        if self.bias.ndim == 1:
+            bias = self.bias.view(1, -1, *([1] * (input.ndim - 2)))
+        else:
+            bias = self.bias
+        return F.leaky_relu(input + bias, negative_slope=self.negative_slope) * self.scale
 
+# original
+# def fused_leaky_relu(input, bias, negative_slope=0.2, scale=2 ** 0.5):
+#     if input.device.type == "cpu":
+#         rest_dim = [1] * (input.ndim - bias.ndim - 1)
+#         return (
+#             F.leaky_relu(
+#                 input + bias.view(1, bias.shape[0], *rest_dim), negative_slope=0.2
+#             )
+#             * scale
+#         )
+
+#     else:
+#         return FusedLeakyReLUFunction.apply(input, bias, negative_slope, scale)
 
 def fused_leaky_relu(input, bias, negative_slope=0.2, scale=2 ** 0.5):
-    if input.device.type == "cpu":
-        rest_dim = [1] * (input.ndim - bias.ndim - 1)
-        return (
-            F.leaky_relu(
-                input + bias.view(1, bias.shape[0], *rest_dim), negative_slope=0.2
-            )
-            * scale
-        )
-
-    else:
-        return FusedLeakyReLUFunction.apply(input, bias, negative_slope, scale)
+    if bias is not None and bias.ndim == 1:
+        bias = bias.view(1, -1, *([1] * (input.ndim - 2)))
+    return F.leaky_relu(input + (bias if bias is not None else 0), negative_slope) * scale

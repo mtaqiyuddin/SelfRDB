@@ -53,7 +53,8 @@ class NumpyDataset(BaseDataset):
         stage,
         image_size,
         norm=True,
-        padding=True
+        padding=True,
+        orientation_correction=False
     ):
         super().__init__(
             data_dir,
@@ -64,6 +65,7 @@ class NumpyDataset(BaseDataset):
             norm,
             padding
         )
+        self.orientation_correction = orientation_correction
 
         # Load target images
         self.target = self._load_data(self.target_modality)
@@ -88,17 +90,30 @@ class NumpyDataset(BaseDataset):
         # Expand channel dim
         self.target = np.expand_dims(self.target, axis=1)
         self.source = np.expand_dims(self.source, axis=1)
-
+    
     def _load_data(self, contrast):
         data_dir = os.path.join(self.data_dir, contrast, self.stage)
         files = [f for f in os.listdir(data_dir) if f.endswith('.npy')]
 
-        # Sort by slice index
-        files.sort(key=lambda x: int(x.split('_')[-1].split('.')[0]))
+        # Sort by slice index, handle non-integer suffixes like 'slice0'
+        def extract_slice_index(filename):
+            suffix = filename.split('_')[-1].split('.')[0]
+            return int(suffix) if suffix.isdigit() else float('inf')
+        files.sort(key=extract_slice_index)
+        
 
         data = []
         for file in files:
-            data.append(np.load(os.path.join(data_dir, file)))
+            slice_data = np.load(os.path.join(data_dir, file))
+            
+            # Apply consistent orientation correction if needed
+            if hasattr(self, 'orientation_correction') and self.orientation_correction:
+                if contrast.upper() == 'T1':
+                    # Apply specific orientation correction for T1 if needed
+                    slice_data = np.rot90(slice_data, 1)  # Rotate 90 degrees clockwise
+                # T2 and other modalities keep original orientation
+            
+            data.append(slice_data)
         
         return np.array(data).astype(np.float32)
 
@@ -192,7 +207,8 @@ class DataModule(L.LightningDataModule):
             batch_size=self.train_batch_size,
             num_workers=self.num_workers,
             shuffle=True,
-            drop_last=True
+            drop_last=True,
+            persistent_workers=True
         )
 
     def val_dataloader(self):
@@ -200,7 +216,8 @@ class DataModule(L.LightningDataModule):
             self.val_dataset,
             batch_size=self.val_batch_size,
             num_workers=self.num_workers,
-            shuffle=False
+            shuffle=False,
+            persistent_workers=True
         )
 
     def test_dataloader(self):
@@ -208,5 +225,6 @@ class DataModule(L.LightningDataModule):
             self.test_dataset,
             batch_size=self.test_batch_size,
             num_workers=self.num_workers,
-            shuffle=False
+            shuffle=False,
+            persistent_workers=True
         )

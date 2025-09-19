@@ -14,31 +14,14 @@ from torch.autograd import Function
 from torch.utils.cpp_extension import load
 from collections import abc
 
-#original
-# module_path = os.path.dirname(__file__)
-# upfirdn2d_op = load(
-#     "upfirdn2d",
-#     sources=[
-#         os.path.join(module_path, "upfirdn2d.cpp"),
-#         os.path.join(module_path, "upfirdn2d_kernel.cu"),
-#     ],
-# )
-
 module_path = os.path.dirname(__file__)
-upfirdn2d_op = None
-try:
-    # Only try to build the CUDA/C++ extension if CUDA is available.
-    if torch.cuda.is_available():
-        upfirdn2d_op = load(
-            "upfirdn2d",
-            sources=[
-                os.path.join(module_path, "upfirdn2d.cpp"),
-                os.path.join(module_path, "upfirdn2d_kernel.cu"),
-            ],
-        )
-except Exception:
-    # On Apple Silicon / CPU-only or build failure: stick to the native PyTorch path
-    upfirdn2d_op = None
+upfirdn2d_op = load(
+    "upfirdn2d",
+    sources=[
+        os.path.join(module_path, "upfirdn2d.cpp"),
+        os.path.join(module_path, "upfirdn2d_kernel.cu"),
+    ],
+)
 
 
 class UpFirDn2dBackward(Function):
@@ -166,65 +149,37 @@ class UpFirDn2d(Function):
 
         return grad_input, None, None, None, None
 
-# original
-# def upfirdn2d(input, kernel, up=1, down=1, pad=(0, 0)):
-#     if input.device.type == "cpu":
-#         out = upfirdn2d_native(
-#             input, kernel, up, up, down, down, pad[0], pad[1], pad[0], pad[1]
-#         )
-
-#     else:
-#         out = UpFirDn2d.apply(
-#             input, kernel, (up, up), (down, down), (pad[0], pad[1], pad[0], pad[1])
-#         )
-
-#     return out
-
-def _ensure_2d_kernel(kernel: torch.Tensor) -> torch.Tensor:
-    return torch.outer(kernel, kernel) if kernel.dim() == 1 else kernel
 
 def upfirdn2d(input, kernel, up=1, down=1, pad=(0, 0)):
-    kernel = _ensure_2d_kernel(kernel).to(dtype=input.dtype, device=input.device)
-    dev = input.device.type
-    if dev in ("cpu", "mps") or (upfirdn2d_op is None):
-        return upfirdn2d_native(
+    if input.device.type == "cpu":
+        out = upfirdn2d_native(
             input, kernel, up, up, down, down, pad[0], pad[1], pad[0], pad[1]
         )
-    return UpFirDn2d.apply(
-        input, kernel, (up, up), (down, down), (pad[0], pad[1], pad[0], pad[1])
-    )
 
-# original
-# def upfirdn2d_ada(input, kernel, up=1, down=1, pad=(0, 0)):
-#     if not isinstance(up, abc.Iterable):
-#         up = (up, up)
+    else:
+        out = UpFirDn2d.apply(
+            input, kernel, (up, up), (down, down), (pad[0], pad[1], pad[0], pad[1])
+        )
 
-#     if not isinstance(down, abc.Iterable):
-#         down = (down, down)
-
-#     if len(pad) == 2:
-#         pad = (pad[0], pad[1], pad[0], pad[1])
-
-#     if input.device.type == "cpu":
-#         out = upfirdn2d_native(input, kernel, *up, *down, *pad)
-
-#     else:
-#         out = UpFirDn2d.apply(input, kernel, up, down, pad)
-
-#     return out
+    return out
 
 def upfirdn2d_ada(input, kernel, up=1, down=1, pad=(0, 0)):
-    from collections import abc
-    if not isinstance(up, abc.Iterable):   up = (up, up)
-    if not isinstance(down, abc.Iterable): down = (down, down)
-    if len(pad) == 2:                      pad = (pad[0], pad[1], pad[0], pad[1])
+    if not isinstance(up, abc.Iterable):
+        up = (up, up)
 
-    kernel = _ensure_2d_kernel(kernel).to(dtype=input.dtype, device=input.device)
+    if not isinstance(down, abc.Iterable):
+        down = (down, down)
 
-    dev = input.device.type
-    if dev in ("cpu", "mps") or (upfirdn2d_op is None):
-        return upfirdn2d_native(input, kernel, *up, *down, *pad)
-    return UpFirDn2d.apply(input, kernel, up, down, pad)
+    if len(pad) == 2:
+        pad = (pad[0], pad[1], pad[0], pad[1])
+
+    if input.device.type == "cpu":
+        out = upfirdn2d_native(input, kernel, *up, *down, *pad)
+
+    else:
+        out = UpFirDn2d.apply(input, kernel, up, down, pad)
+
+    return out
 
 def upfirdn2d_native(
     input, kernel, up_x, up_y, down_x, down_y, pad_x0, pad_x1, pad_y0, pad_y1

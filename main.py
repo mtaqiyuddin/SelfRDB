@@ -14,6 +14,18 @@ from backbones.discriminator import Discriminator_large
 from datasets import DataModule
 from utils import compute_metrics, save_image_pair, save_preds, save_eval_images
 
+# Let MPS (Apple Silicon) automatically fall back to CPU if an op isn't supported
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
+def get_device():
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+device = get_device()
+print(f"[info] Using device: {device}")
 
 class BridgeRunner(L.LightningModule):
     def __init__(
@@ -39,7 +51,8 @@ class BridgeRunner(L.LightningModule):
         self.disc_grad_penalty_weight = disc_grad_penalty_weight
         self.lambda_rec_loss = lambda_rec_loss
         self.optim_betas = optim_betas
-        self.eval_mask = eval_mask
+        self.eval_mask = False#eval_mask
+        print(f"[DEBUG] eval_mask value: {self.eval_mask}")
         self.eval_subject = eval_subject
         self.n_steps = diffusion_params['n_steps']
         self.n_recursions = diffusion_params['n_recursions']
@@ -180,6 +193,7 @@ class BridgeRunner(L.LightningModule):
         self.subject_ids = None
 
         # Load mask for evaluation
+        print(f"[DEBUG] on_test_start: eval_mask value is {self.eval_mask}")
         if self.eval_mask:
             self.mask = self.trainer.datamodule.test_dataset._load_data('mask')
 
@@ -284,7 +298,7 @@ def cli_main():
         BridgeRunner,
         DataModule,
         save_config_callback=None,
-        parser_kwargs={"parser_mode": "omegaconf"}
+        parser_kwargs={"parser_mode": "yaml"}
     )
 
 
